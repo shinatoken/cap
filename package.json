@@ -1,0 +1,28 @@
+{
+  "name": "shina-mcap",
+  "version": "0.1.0",
+  "bin": {
+    "shina-mcap": "bin/shina-mcap.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "deploy": "cdk deploy --force",
+    "destroy": "cdk destroy --force"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.59",
+    "aws-cdk": "2.15.0",
+    "@types/node": "10.17.27",
+    "ts-node": "^9.0.0",
+    "typescript": "~3.9.7"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.54.0",
+    "aws-cdk-lib": "2.15.0",
+    "constructs": "^10.0.0",
+    "dotenv": "^16.0.0",
+    "glob": "^7.2.0",
+    "web3": "^1.7.1"
+  }
+}

@@ -1,8 +1,8 @@
 import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
-import Web3 from "web3";
 import { verifyConfig } from "./verify";
 import { getAllMatchingFileContents } from "./utils";
 import { putObjectToS3, readDataFromS3 } from './s3';
+import { ethers } from "ethers";
 
 verifyConfig()
 
@@ -13,20 +13,24 @@ export interface Balances {
 }
 
 // Object stored in S3
-export interface MarketData extends Balances {
+export interface MarketData extends Balances, MCapData {
   ethUsd: string,
   totalSupply: string,
   timestamp: string,
+  ethUsdMcap: string,
 }
 
 // Register with https://infura.io to grab your own project id.
-const INFURA_PROJ_ID = process.env.INFURA_PROJ_ID
-const INFURA_URL = `https://mainnet.infura.io/v3/${INFURA_PROJ_ID}`
-const web3 = new Web3(new Web3.providers.HttpProvider(INFURA_URL))
+export const INFURA_PROJ_ID = process.env.INFURA_PROJ_ID
+export const INFURA_URL = `https://mainnet.infura.io/v3/${INFURA_PROJ_ID}`
+console.log("URL: " + INFURA_URL)
+export const provider = new ethers.providers.JsonRpcProvider(INFURA_URL)
+
+import { getSHIMarketCap, MCapData } from './mcap';
 
 // Pool and token contracts found from https://etherscan.io
+export const ADDR_SHINA       = '0x243cACb4D5fF6814AD668C3e225246efA886AD5a'
 const ADDR_UNISWAP_SHINA_POOL = '0x959C7D5706AC0B5a29F506a1019Ba7F2a1C70c70'
-const ADDR_SHINA              = '0x243cACb4D5fF6814AD668C3e225246efA886AD5a'
 const ADDR_WETH               = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'
 const ADDR_CHL_ETH            = "0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419"
 
@@ -44,16 +48,20 @@ const ABI_SHINA   = JSON.parse(abis.get('shina-contract.json'))
 const ABI_WETH    = JSON.parse(abis.get('weth-contract.json'))
 const ABI_CHL_ETH = JSON.parse(abis.get('chainlink-eth-feed.json'))
 
-const ethPriceFeedContract = new web3.eth.Contract(ABI_CHL_ETH, ADDR_CHL_ETH)
-const shinaContract        = new web3.eth.Contract(ABI_SHINA, ADDR_SHINA)
-const wethContract         = new web3.eth.Contract(ABI_WETH, ADDR_WETH)
+// const ethPriceFeedContract = new web3.eth.Contract(ABI_CHL_ETH, ADDR_CHL_ETH)
+// const shinaContract        = new web3.eth.Contract(ABI_SHINA, ADDR_SHINA)
+// const wethContract         = new web3.eth.Contract(ABI_WETH, ADDR_WETH)
+
+const ethPriceFeedContract = new ethers.Contract(ADDR_CHL_ETH, ABI_CHL_ETH, provider);
+const shinaContract = new ethers.Contract(ADDR_SHINA, ABI_SHINA, provider);
+const wethContract = new ethers.Contract(ADDR_WETH, ABI_WETH, provider);
 
 /**
  * Gets the usd price of 1 eth
  */
 async function getEthUsd() {
 
-  return ethPriceFeedContract.methods.latestAnswer().call()
+  return ethPriceFeedContract.latestAnswer()
       // Expose fractions by / 10**8
       // Eth has no fractions so everything comes in super big numbers
       .then((data: any) => {
@@ -68,11 +76,11 @@ async function getEthUsd() {
 async function getPoolBalances(): Promise<Balances> {
 
   try {
-    const shinaBalWei = await shinaContract.methods.balanceOf(ADDR_UNISWAP_SHINA_POOL).call()
-    const shinaBal = Web3.utils.fromWei(shinaBalWei)
+    const shinaBalWei = await shinaContract.balanceOf(ADDR_UNISWAP_SHINA_POOL)
+    const shinaBal = ethers.utils.formatEther(shinaBalWei)
 
-    const wethBalWei = await wethContract.methods.balanceOf(ADDR_UNISWAP_SHINA_POOL).call()
-    const wethBal = Web3.utils.fromWei(wethBalWei)
+    const wethBalWei = await wethContract.balanceOf(ADDR_UNISWAP_SHINA_POOL)
+    const wethBal = ethers.utils.formatEther(wethBalWei)
 
     return {
       shina: shinaBal,
@@ -91,6 +99,7 @@ async function getPoolBalances(): Promise<Balances> {
 async function getData(): Promise<string> {
   return JSON.stringify(
     {
+      ...await getSHIMarketCap(),
       ...await getPoolBalances(),
       ethUsd: await getEthUsd(),
       totalSupply: `${SHINA_TOT_SUPPLY}`,
@@ -105,18 +114,18 @@ async function getData(): Promise<string> {
 export async function main(
   event: APIGatewayProxyEventV2,
 ): Promise<APIGatewayProxyResultV2> {
-  console.log('Event received');
+  console.log('Event received')
 
   const data: string = await getData()
   console.log(`Got data: ${data}`)
 
-  await writeDataToS3(data);
+  await writeDataToS3(data)
 
-  console.log('Successful');
+  console.log('Successful')
   return {
     body: JSON.stringify({message: 'Successful lambda invocation'}),
     statusCode: 200,
-  };
+  }
 }
 
 
@@ -131,8 +140,8 @@ async function writeDataToS3(data: string) {
   await Promise.all([
     
     // Write to a constant file so we can query for 'latest'
-    putObjectToS3(data, 'latest.json'), 
-
+    putObjectToS3(data, 'latestv2.json'), 
+  
     // Write it again, but this time create an aggregate for the year
     appendDataToAggregate(data)
   ]);
@@ -142,16 +151,16 @@ async function writeDataToS3(data: string) {
  * Appends data to the aggregate file. Will accumulate for the year. 
  */
 async function appendDataToAggregate(data: string) {
-  const fileName = `${(new Date()).getFullYear()}.json`;
-  let aggregate: MarketData[] | undefined = await readDataFromS3(fileName);
+  const fileName = `${(new Date()).getFullYear()}.json`
+  let aggregate: MarketData[] | undefined = await readDataFromS3(fileName)
 
   if (aggregate) {
-    aggregate.push(JSON.parse(data));
+    aggregate.push(JSON.parse(data))
   }
   else {
-    aggregate = [JSON.parse(data)] as MarketData[];
+    aggregate = [JSON.parse(data)] as MarketData[]
   }
-  await putObjectToS3(JSON.stringify(aggregate), fileName);
+  await putObjectToS3(JSON.stringify(aggregate), fileName)
 }
 
 
@@ -166,4 +175,4 @@ async function appendDataToAggregate(data: string) {
       console.log(e)
   }
   
-})();
+})()

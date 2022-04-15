@@ -19,9 +19,12 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.54.0",
+    "@uniswap/sdk-core": "^3.0.1",
+    "@uniswap/v3-sdk": "^3.8.2",
     "aws-cdk-lib": "2.15.0",
     "constructs": "^10.0.0",
     "dotenv": "^16.0.0",
+    "ethers": "^5.6.2",
     "glob": "^7.2.0",
     "web3": "^1.7.1"
   }

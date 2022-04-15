@@ -1,9 +1,7 @@
 import { BigNumber, ethers } from "ethers";
-import { Pool } from "@uniswap/v3-sdk";
-import { Token } from "@uniswap/sdk-core";
 import { abi as IUniswapV3PoolABI } from "@uniswap/v3-core/artifacts/contracts/interfaces/IUniswapV3Pool.sol/IUniswapV3Pool.json";
 import { abi as QuoterABI } from "@uniswap/v3-periphery/artifacts/contracts/lens/Quoter.sol/Quoter.json";
-import { ADDR_SHINA, INFURA_PROJ_ID } from "./shinacap";
+import { ADDR_SHINA, provider } from "./shinacap";
 
 const erc20Abi = [
   "function balanceOf(address owner) view returns (uint256)",
@@ -14,10 +12,6 @@ const erc20Abi = [
 ];
 
 const DEAD_WALLET_ADDR = '0x000000000000000000000000000000000000dEaD';
-
-const provider = new ethers.providers.JsonRpcProvider(
-  `https://mainnet.infura.io/v3/${INFURA_PROJ_ID}`
-);
 
 //  URL: https://info.uniswap.org/#/pools/0x959c7d5706ac0b5a29f506a1019ba7f2a1c70c70
 const SHINA_POOL_ADDR = "0x959c7d5706ac0b5a29f506a1019ba7f2a1c70c70"; //SHI/ETH pool

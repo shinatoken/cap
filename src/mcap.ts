@@ -17,20 +17,10 @@ const DEAD_WALLET_ADDR = '0x000000000000000000000000000000000000dEaD';
 const SHINA_POOL_ADDR = "0x959c7d5706ac0b5a29f506a1019ba7f2a1c70c70"; //SHI/ETH pool
 const QUOTER_ADDR     = "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6";
 
-// Interface for the functions of the pool contract that we'll be calling
-const poolContract = new ethers.Contract(
-  SHINA_POOL_ADDR,
-  IUniswapV3PoolABI,
-  provider
-);
-
 export interface MCapData {
   mCapEth: string,
   burntShiAmt: string,
 }
-
-// Deployment address of the quoter contract.
-const quoterContract = new ethers.Contract(QUOTER_ADDR, QuoterABI, provider);
 
 interface PoolInformation {
   factory: string;
@@ -52,7 +42,9 @@ interface State {
   unlocked: boolean;
 }
 
-async function getPoolData() {
+async function getPoolData(poolContract: ethers.Contract) {
+  console.log('getPoolData - ' + poolContract.address)
+
   const [factory, token0, token1, fee, tickSpacing, maxLiquidityPerTick] =
     await Promise.all([
       poolContract.factory(),
@@ -74,8 +66,9 @@ async function getPoolData() {
 }
 
 // Fetch current pricing and liquidity info
-async function getPoolState() {
-  
+async function getPoolState(poolContract: ethers.Contract) {
+  console.log('getPoolState - ' + poolContract.address)
+
   const [liquidity, slot] = await Promise.all([
     poolContract.liquidity(),
     poolContract.slot0(),
@@ -95,15 +88,26 @@ async function getPoolState() {
   return poolState;
 }
 
-export async function getSHIMarketCap() {
+export async function getSHIMarketCap(provider: ethers.providers.JsonRpcProvider) {
+  console.log('getSHIMarketCap - ' + provider.connection.url)
 
   // Amount of SHI to swap
   const amountIn = 200000000;
+    
+  // Deployment address of the quoter contract.
+  const quoterContract = new ethers.Contract(QUOTER_ADDR, QuoterABI, provider);
+
+  // Interface for the functions of the pool contract that we'll be calling
+  const poolContract = new ethers.Contract(
+    SHINA_POOL_ADDR,
+    IUniswapV3PoolABI,
+    provider
+  );
 
   // Query the state of the pool
   const [immutables, state] = await Promise.all([
-    getPoolData(),
-    getPoolState(),
+    getPoolData(poolContract),
+    getPoolState(poolContract),
   ]);
 
   // Assign an input amount for the swap

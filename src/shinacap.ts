@@ -3,8 +3,11 @@ import { verifyConfig } from "./verify";
 import { getAllMatchingFileContents } from "./utils";
 import { putObjectToS3, readDataFromS3 } from './s3';
 import { ethers } from "ethers";
+import { getSHIMarketCap, MCapData } from './mcap';
 
 verifyConfig()
+
+const VER = 'v2'
 
 // Represents current pool pair balances
 export interface Balances {
@@ -25,8 +28,6 @@ export const INFURA_PROJ_ID = process.env.INFURA_PROJ_ID
 export const INFURA_URL = `https://mainnet.infura.io/v3/${INFURA_PROJ_ID}`
 console.log("URL: " + INFURA_URL)
 export const provider = new ethers.providers.JsonRpcProvider(INFURA_URL)
-
-import { getSHIMarketCap, MCapData } from './mcap';
 
 // Pool and token contracts found from https://etherscan.io
 export const ADDR_SHINA       = '0x243cACb4D5fF6814AD668C3e225246efA886AD5a'
@@ -60,6 +61,7 @@ const wethContract = new ethers.Contract(ADDR_WETH, ABI_WETH, provider);
  * Gets the usd price of 1 eth
  */
 async function getEthUsd() {
+  console.log('getEthUsd()')
 
   return ethPriceFeedContract.latestAnswer()
       // Expose fractions by / 10**8
@@ -74,6 +76,7 @@ async function getEthUsd() {
  * Returns erc20 token counts in our uniswap shi/weth pool.
  */
 async function getPoolBalances(): Promise<Balances> {
+  console.log('getPoolBalances()')
 
   try {
     const shinaBalWei = await shinaContract.balanceOf(ADDR_UNISWAP_SHINA_POOL)
@@ -97,9 +100,11 @@ async function getPoolBalances(): Promise<Balances> {
  * @returns json as string
  */
 async function getData(): Promise<string> {
+  console.log('getData()')
+
   return JSON.stringify(
     {
-      ...await getSHIMarketCap(),
+      ...await getSHIMarketCap(provider),
       ...await getPoolBalances(),
       ethUsd: await getEthUsd(),
       totalSupply: `${SHINA_TOT_SUPPLY}`,
@@ -114,7 +119,7 @@ async function getData(): Promise<string> {
 export async function main(
   event: APIGatewayProxyEventV2,
 ): Promise<APIGatewayProxyResultV2> {
-  console.log('Event received')
+  console.log('main')
 
   const data: string = await getData()
   console.log(`Got data: ${data}`)
@@ -140,7 +145,7 @@ async function writeDataToS3(data: string) {
   await Promise.all([
     
     // Write to a constant file so we can query for 'latest'
-    putObjectToS3(data, 'latestv2.json'), 
+    putObjectToS3(data, `latest${VER}.json`), 
   
     // Write it again, but this time create an aggregate for the year
     appendDataToAggregate(data)
@@ -151,7 +156,7 @@ async function writeDataToS3(data: string) {
  * Appends data to the aggregate file. Will accumulate for the year. 
  */
 async function appendDataToAggregate(data: string) {
-  const fileName = `${(new Date()).getFullYear()}.json`
+  const fileName = `${(new Date()).getFullYear()}${VER}.json`
   let aggregate: MarketData[] | undefined = await readDataFromS3(fileName)
 
   if (aggregate) {
